@@ -237,14 +237,145 @@ def inject_styles():
         color: #9B3A3A;
         margin-bottom: 1rem;
     }
+
+    /* ── Ranking widget ───────────────────────────────────────────────────── */
+    .rank-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 0.5rem;
+    }
+    .rank-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #fff;
+        border: 1.5px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 14px;
+        cursor: grab;
+        user-select: none;
+        transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 0.95rem;
+        color: var(--charcoal);
+    }
+    .rank-item:active { cursor: grabbing; }
+    .rank-item.dragging {
+        opacity: 0.5;
+        border-color: var(--sage);
+        box-shadow: 0 4px 18px rgba(90,122,90,0.22);
+    }
+    .rank-item.drag-over {
+        border-color: var(--sage);
+        background: var(--sage-lt);
+        transform: scale(1.01);
+    }
+    .rank-badge {
+        min-width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--sage);
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .rank-drag-hint {
+        font-size: 0.75rem;
+        color: var(--muted);
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    /* ── Likert scale ─────────────────────────────────────────────────────── */
+    .likert-wrap {
+        display: flex;
+        gap: 0;
+        width: 100%;
+        margin-top: 0.4rem;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1.5px solid var(--border);
+    }
+    .likert-opt {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 12px 6px 10px;
+        cursor: pointer;
+        border-right: 1px solid var(--border);
+        background: #fff;
+        transition: background 0.15s;
+        text-align: center;
+        gap: 6px;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 0.82rem;
+        color: var(--muted);
+        line-height: 1.3;
+    }
+    .likert-opt:last-child { border-right: none; }
+    .likert-opt.selected {
+        background: var(--sage-lt);
+        color: var(--sage);
+        font-weight: 600;
+    }
+    .likert-dot {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid var(--border);
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .likert-opt.selected .likert-dot {
+        border-color: var(--sage);
+        background: var(--sage);
+    }
+    .likert-labels {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 5px;
+        padding: 0 2px;
+        font-size: 0.72rem;
+        color: var(--muted);
+    }
     </style>
     """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # QUESTION DEFINITIONS
-# Each MC option carries scores for [trust, control, anxiety, boundary]  1–5
 # ─────────────────────────────────────────────────────────────────────────────
+# Q2 uses type="ranking"; new Q_LIKERT uses type="likert"
+# Each MC option carries scores for [trust, control, anxiety, boundary]  1–5
+
+RANKING_OPTIONS_Q2 = [
+    "Safety and emotional care",
+    "Focus on measurable academic outcomes",
+    "Build independence, social skills, and emotional regulation",
+    "Follow the family's parenting style",
+    "Encourage curiosity, creativity, and play-based learning",
+]
+
+LIKERT_OPTIONS = [
+    "Very uncomfortable",
+    "Uncomfortable",
+    "Neutral",
+    "Comfortable",
+    "Very comfortable",
+]
+
 QUESTIONS = [
     {   # Q1
         "id": "q1", "type": "single", "section": "Child Transition",
@@ -260,19 +391,10 @@ QUESTIONS = [
              "scores": {"trust": 3, "control": 3, "anxiety": 2, "boundary": 3}},
         ],
     },
-    {   # Q2
-        "id": "q2", "type": "single", "section": "Role of Nursery",
-        "text": "In your view, what is the primary role of a nursery?",
-        "options": [
-            {"label": "Safety and emotional care above all",
-             "scores": {"trust": 4, "control": 3, "anxiety": 3, "boundary": 4}},
-            {"label": "Achieving measurable academic milestones",
-             "scores": {"trust": 3, "control": 2, "anxiety": 3, "boundary": 2}},
-            {"label": "Building independence, social skills, and emotional regulation",
-             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
-            {"label": "Extending and reflecting the family's parenting style",
-             "scores": {"trust": 2, "control": 1, "anxiety": 3, "boundary": 2}},
-        ],
+    {   # Q2 — RANKING
+        "id": "q2", "type": "ranking", "section": "Role of Nursery",
+        "text": "Please rank the following from most to least important to you in a nursery setting.",
+        "options": RANKING_OPTIONS_Q2,
     },
     {   # Q3
         "id": "q3", "type": "single", "section": "Communication & Conflict",
@@ -330,7 +452,7 @@ QUESTIONS = [
              "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
         ],
     },
-    {   # Q7 — NEW: Separation handling
+    {   # Q7 — Separation handling
         "id": "q7", "type": "single", "section": "Child Readiness",
         "text": "How does your child typically respond when separated from you in an unfamiliar setting?",
         "options": [
@@ -344,7 +466,7 @@ QUESTIONS = [
              "scores": {"trust": 3, "control": 3, "anxiety": 3, "boundary": 3}},
         ],
     },
-    {   # Q8 — NEW: Parental self-awareness at drop-off
+    {   # Q8 — Parental self-awareness at drop-off
         "id": "q8", "type": "single", "section": "Parental Self-Awareness",
         "text": "How would you describe your own emotional response during drop-off on difficult days?",
         "options": [
@@ -358,12 +480,17 @@ QUESTIONS = [
              "scores": {"trust": 3, "control": 3, "anxiety": 4, "boundary": 3}},
         ],
     },
-    {   # Q9 — Short answer
+    {   # Q9 — NEW: Likert separation comfort
+        "id": "q9_likert", "type": "likert", "section": "Separation Readiness",
+        "text": "How comfortable are you with your child experiencing temporary distress (e.g., crying or resistance) as part of adapting to nursery separation?",
+        "options": LIKERT_OPTIONS,
+    },
+    {   # Q10 — Short answer (was Q9)
         "id": "q9", "type": "text", "section": "Open Reflection",
         "text": "What is your biggest concern about starting nursery?",
         "placeholder": "Feel free to share openly — this helps us support your child better.",
     },
-    {   # Q10 — Short answer
+    {   # Q11 — Short answer (was Q10)
         "id": "q10", "type": "text", "section": "Open Reflection",
         "text": "How do you envision a successful partnership with the nursery team?",
         "placeholder": "There are no right or wrong answers — we value your perspective.",
@@ -391,7 +518,6 @@ BOUNDARY_POSITIVE = ["respect","professional","boundaries","structure",
 
 
 def keyword_adjustment(text: str) -> dict:
-    """Return small ±1 score deltas per dimension from open-answer keyword detection."""
     if not text:
         return {"trust": 0, "control": 0, "anxiety": 0, "boundary": 0}
     t = text.lower()
@@ -412,30 +538,103 @@ def keyword_adjustment(text: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RANKING SCORE MAPPING
+# Rank 1 (most important) → highest weight; rank 5 → lowest weight
+# Option scores are indexed by their position in RANKING_OPTIONS_Q2
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-option dimension scores (same structure as MC options)
+RANKING_OPTION_SCORES = {
+    "Safety and emotional care":
+        {"trust": 4, "control": 3, "anxiety": 3, "boundary": 4},
+    "Focus on measurable academic outcomes":
+        {"trust": 2, "control": 2, "anxiety": 2, "boundary": 2},
+    "Build independence, social skills, and emotional regulation":
+        {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5},
+    "Follow the family's parenting style":
+        {"trust": 2, "control": 1, "anxiety": 2, "boundary": 1},
+    "Encourage curiosity, creativity, and play-based learning":
+        {"trust": 4, "control": 4, "anxiety": 4, "boundary": 4},
+}
+
+# Rank weights: rank 1 = 1.0, rank 2 = 0.75, rank 3 = 0.5, rank 4 = 0.3, rank 5 = 0.15
+RANK_WEIGHTS = [1.0, 0.75, 0.5, 0.3, 0.15]
+
+# Max contribution from Q2 (used in normalisation):
+# best case: all 5s × sum(weights) = 5 × 2.7 = 13.5 → round to 14
+Q2_MAX = 14.0
+
+
+def score_ranking(ranked_list: list) -> dict:
+    """Score a ranked list of option labels. Returns raw dimension scores."""
+    totals = {"trust": 0.0, "control": 0.0, "anxiety": 0.0, "boundary": 0.0}
+    for rank_idx, label in enumerate(ranked_list):
+        w = RANK_WEIGHTS[rank_idx] if rank_idx < len(RANK_WEIGHTS) else 0.1
+        opt_scores = RANKING_OPTION_SCORES.get(label, {})
+        for dim, val in opt_scores.items():
+            totals[dim] += val * w
+    # Normalise to 0–5 range to match MC scoring granularity
+    return {d: round(v / Q2_MAX * 5, 2) for d, v in totals.items()}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIKERT SCORE MAPPING
+# ─────────────────────────────────────────────────────────────────────────────
+LIKERT_SCORES = {
+    "Very uncomfortable":  {"trust": 1, "control": 1, "anxiety": 1, "boundary": 1},
+    "Uncomfortable":       {"trust": 2, "control": 2, "anxiety": 2, "boundary": 2},
+    "Neutral":             {"trust": 3, "control": 3, "anxiety": 3, "boundary": 3},
+    "Comfortable":         {"trust": 4, "control": 4, "anxiety": 4, "boundary": 4},
+    "Very comfortable":    {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5},
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SCORING ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 def compute_scores(answers: dict) -> dict:
-    """Aggregate MC + keyword scores. Returns {raw: {...}, pct: {...}}."""
-    totals = {"trust": 0, "control": 0, "anxiety": 0, "boundary": 0}
+    """Aggregate MC + ranking + likert + keyword scores."""
+    totals = {"trust": 0.0, "control": 0.0, "anxiety": 0.0, "boundary": 0.0}
+
     for q in QUESTIONS:
+        qid = q["id"]
+
         if q["type"] == "single":
-            label = answers.get(q["id"])
+            label = answers.get(qid)
             if label:
                 for opt in q["options"]:
                     if opt["label"] == label:
                         for dim, val in opt["scores"].items():
                             totals[dim] += val
+
+        elif q["type"] == "ranking":
+            ranked = answers.get(qid)  # list of labels in ranked order
+            if ranked and len(ranked) == len(q["options"]):
+                for dim, val in score_ranking(ranked).items():
+                    totals[dim] += val
+
+        elif q["type"] == "likert":
+            label = answers.get(qid)
+            if label and label in LIKERT_SCORES:
+                for dim, val in LIKERT_SCORES[label].items():
+                    totals[dim] += val
+
+    # Keyword adjustments on open text
     for qid in ["q9", "q10"]:
         for dim, delta in keyword_adjustment(answers.get(qid, "")).items():
             totals[dim] += delta
-    # 8 MC × 5 = 40 max + 2 keyword bonus = 42
-    max_possible = 42
+
+    # Max possible:
+    #   MC: 8 questions × 5 = 40
+    #   Ranking Q2 normalised to 5-equivalent per dimension → 5
+    #   Likert: 5
+    #   Keyword bonus: 2
+    #   Total: 52
+    max_possible = 52.0
     pct = {d: round(min(max(totals[d] / max_possible * 100, 0), 100)) for d in totals}
-    return {"raw": totals, "pct": pct}
+    return {"raw": {d: round(totals[d], 2) for d in totals}, "pct": pct}
 
 
 def classify_risk(scores: dict) -> tuple:
-    """Return (level, label) based on average alignment %."""
     avg = sum(scores["pct"].values()) / len(scores["pct"])
     if avg >= 72:
         return "low",  "High Alignment — Low Risk"
@@ -456,6 +655,17 @@ def build_prompt(demographics: dict, answers: dict,
             mc_lines.append(
                 f"- {q['text']}\n  Answer: {answers.get(q['id'], 'No answer')}"
             )
+        elif q["type"] == "ranking":
+            ranked = answers.get(q["id"], [])
+            ranked_str = " → ".join(
+                [f"#{i+1} {lbl}" for i, lbl in enumerate(ranked)]
+            ) if ranked else "Not ranked"
+            mc_lines.append(f"- {q['text']}\n  Ranking: {ranked_str}")
+        elif q["type"] == "likert":
+            mc_lines.append(
+                f"- {q['text']}\n  Answer: {answers.get(q['id'], 'No answer')}"
+            )
+
     pct = scores["pct"]
     child_age = (f"{demographics.get('child_age_years', 0)} years, "
                  f"{demographics.get('child_age_months', 0)} months")
@@ -509,7 +719,6 @@ Rules:
 
 def generate_report(demographics: dict, answers: dict,
                     scores: dict, risk_label: str) -> str:
-    """Groq API report with rule-based fallback."""
     try:
         from groq import Groq
         client = Groq(api_key=st.secrets["GROQ_API_KEY"])
@@ -563,10 +772,33 @@ def _rule_based_report(demographics, answers, scores, risk_label):
         "to align expectations on communication, boundaries, and the nursery's professional approach."
     )
 
+    # Describe ranking insight
+    ranked = answers.get("q2", [])
+    ranking_insight = ""
+    if ranked:
+        top = ranked[0] if len(ranked) > 0 else ""
+        bottom = ranked[-1] if len(ranked) > 0 else ""
+        ranking_insight = (
+            f" Their nursery priorities place '{top}' first and '{bottom}' last, "
+            "which offers insight into their expectations and values."
+        )
+
+    # Describe likert insight
+    likert_val = answers.get("q9_likert", "")
+    likert_insight = ""
+    if likert_val:
+        if likert_val in ["Very uncomfortable", "Uncomfortable"]:
+            likert_insight = " The parent reports low comfort with temporary separation distress, suggesting a need for reassurance and a gradual transition plan."
+        elif likert_val == "Neutral":
+            likert_insight = " The parent reports a neutral stance toward separation distress, indicating openness to guidance on the transition process."
+        else:
+            likert_insight = " The parent reports comfort with temporary separation distress, reflecting healthy readiness for the child's independent nursery experience."
+
     lines = [
         "1. EXECUTIVE SUMMARY",
         f"{parent} presents with an overall risk classification of {risk_label}. Their profile "
-        f"reflects {tl} trust in professionals, {al} transition anxiety, and {bl} boundary respect.",
+        f"reflects {tl} trust in professionals, {al} transition anxiety, and {bl} boundary respect."
+        f"{ranking_insight}{likert_insight}",
         "",
         "2. PARENT PROFILE ANALYSIS",
         f"This parent shows a {cl} control orientation and {al} comfort with {child}'s independent "
@@ -616,7 +848,6 @@ def build_pdf(demographics: dict, answers: dict,
                              leftMargin=2.2*cm, rightMargin=2.2*cm,
                              topMargin=2.5*cm, bottomMargin=2.5*cm)
 
-    # Colours
     SAGE       = colors.HexColor("#5A7A5A")
     SAGE_LIGHT = colors.HexColor("#E8F0E8")
     CHARCOAL   = colors.HexColor("#2D2D2D")
@@ -654,14 +885,14 @@ def build_pdf(demographics: dict, answers: dict,
 
     story = []
 
-    # ── Title ────────────────────────────────────────────────────────────────
+    # Title
     story += [
         Paragraph("🌱  Nursery Pre-Enrollment Assessment", sTitle),
         Paragraph("Confidential Staff Report — For Director Use Only", sSub),
         sp(0.3), hr(SAGE, 1.5), sp(0.2),
     ]
 
-    # ── Demographics table ───────────────────────────────────────────────────
+    # Demographics table
     child_age_str = (f"{demographics.get('child_age_years',0)} yr  "
                      f"{demographics.get('child_age_months',0)} mo")
     prior_str = ("Yes — has attended nursery before"
@@ -695,7 +926,7 @@ def build_pdf(demographics: dict, answers: dict,
     ]))
     story += [demo_tbl, sp(0.4)]
 
-    # ── Risk badge ───────────────────────────────────────────────────────────
+    # Risk badge
     risk_level, _ = classify_risk(scores)
     risk_bg, risk_fg = RISK_PALETTE.get(risk_level, RISK_PALETTE["mod"])
     risk_row = [[Paragraph(
@@ -711,7 +942,7 @@ def build_pdf(demographics: dict, answers: dict,
     ]))
     story += [risk_tbl, sp(0.4)]
 
-    # ── Dimension score bars ─────────────────────────────────────────────────
+    # Dimension score bars
     story += [hr(), Paragraph("DIMENSION SCORES", sSection)]
     dim_meta = {
         "trust":    ("Trust in Professionals",
@@ -749,15 +980,25 @@ def build_pdf(demographics: dict, answers: dict,
         ]))
         story.append(KeepTogether([bar, Paragraph(desc, sSmall), sp(0.15)]))
 
-    # ── MC Answers ───────────────────────────────────────────────────────────
+    # Assessment answers
     story += [sp(0.2), hr(), Paragraph("ASSESSMENT ANSWERS", sSection)]
     for q in QUESTIONS:
         if q["type"] == "single":
             story.append(Paragraph(f"<b>Q: {q['text']}</b>", sBody))
             story.append(Paragraph(f"→  {answers.get(q['id'], 'No answer')}", sBullet))
             story.append(sp(0.1))
+        elif q["type"] == "ranking":
+            story.append(Paragraph(f"<b>Q: {q['text']}</b>", sBody))
+            ranked = answers.get(q["id"], [])
+            for ri, rl in enumerate(ranked):
+                story.append(Paragraph(f"#{ri+1}  {rl}", sBullet))
+            story.append(sp(0.1))
+        elif q["type"] == "likert":
+            story.append(Paragraph(f"<b>Q: {q['text']}</b>", sBody))
+            story.append(Paragraph(f"→  {answers.get(q['id'], 'No answer')}", sBullet))
+            story.append(sp(0.1))
 
-    # ── Open responses ───────────────────────────────────────────────────────
+    # Open responses
     story += [hr(), Paragraph("OPEN RESPONSES", sSection)]
     story.append(Paragraph("<b>Biggest concern about starting nursery:</b>", sBody))
     story.append(Paragraph(answers.get("q9","Not provided"), sBullet))
@@ -765,7 +1006,7 @@ def build_pdf(demographics: dict, answers: dict,
     story.append(Paragraph("<b>Vision of a successful partnership:</b>", sBody))
     story.append(Paragraph(answers.get("q10","Not provided"), sBullet))
 
-    # ── Narrative report ─────────────────────────────────────────────────────
+    # Narrative report
     story += [hr(), Paragraph("PROFESSIONAL ASSESSMENT NARRATIVE", sSection)]
     for line in report_text.split("\n"):
         line = line.strip()
@@ -780,7 +1021,7 @@ def build_pdf(demographics: dict, answers: dict,
         else:
             story.append(Paragraph(line, sBody))
 
-    # ── Footer ───────────────────────────────────────────────────────────────
+    # Footer
     story += [sp(0.4), hr(MUTED, 0.4),
               Paragraph(
                   f"Auto-generated by the Nursery Pre-Enrollment Assessment System  •  "
@@ -792,15 +1033,14 @@ def build_pdf(demographics: dict, answers: dict,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EMAIL  (Gmail SMTP via app password)
+# EMAIL
 # ─────────────────────────────────────────────────────────────────────────────
 def send_report_email(pdf_bytes: bytes, demographics: dict,
                       risk_label: str) -> bool:
-    """Email the PDF report to the nursery director. Silent on failure."""
     try:
         sender   = st.secrets["EMAIL_ADDRESS"]
         password = st.secrets["EMAIL_APP_PASSWORD"]
-        receiver = st.secrets["EMAIL_ADDRESS"]   # sends to itself
+        receiver = st.secrets["EMAIL_ADDRESS"]
 
         parent  = demographics.get("parent_name", "Unknown Parent")
         child   = demographics.get("child_name",  "Unknown Child")
@@ -851,7 +1091,7 @@ This message was generated automatically by the Nursery Pre-Enrollment Assessmen
 
         return True
     except Exception as e:
-        print(f"[EMAIL ERROR] {e}")   # log only — never shown to parent
+        print(f"[EMAIL ERROR] {e}")
         return False
 
 
@@ -894,7 +1134,6 @@ def render_progress(answered: int, total: int):
 
 
 def render_demographics(demo: dict) -> dict:
-    """Render demographic fields; return updated dict."""
     st.markdown('<div class="section-label">About Your Family</div>', unsafe_allow_html=True)
     st.markdown('<div class="demo-card"><div class="demo-title">Please tell us a little about your family</div>',
                 unsafe_allow_html=True)
@@ -941,7 +1180,151 @@ def render_demographics(demo: dict) -> dict:
     }
 
 
+def render_ranking_question(q: dict, q_num: int, answers: dict):
+    """
+    Render Q2 ranking question.
+    Uses numbered selectboxes as a clean, reliable ranking interface.
+    """
+    st.markdown(
+        f"""
+        <div class="q-card">
+            <div class="q-number">Question {q_num} &nbsp;·&nbsp; {q["section"]}</div>
+            <div class="q-text">{q["text"]}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    options = q["options"]
+    n = len(options)
+    key_prefix = f"rank_{q['id']}"
+
+    # Initialise ranking state: list of n None values
+    state_key = f"{key_prefix}_order"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = [None] * n
+
+    st.markdown(
+        '<div class="rank-drag-hint">🔢  Assign each priority a rank — 1 = most important, '
+        f'{n} = least important. Each rank must be used exactly once.</div>',
+        unsafe_allow_html=True,
+    )
+
+    current_order = list(st.session_state[state_key])
+
+    # Build selectboxes — one per option
+    new_order = list(current_order)
+    for i, opt in enumerate(options):
+        col_label, col_select = st.columns([5, 2])
+        with col_label:
+            rank_val = current_order[i]
+            badge_html = (
+                f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+                f'width:24px;height:24px;border-radius:50%;background:#5A7A5A;color:#fff;'
+                f'font-weight:700;font-size:0.78rem;margin-right:8px;">{rank_val}</span>'
+                if rank_val else
+                '<span style="display:inline-flex;align-items:center;justify-content:center;'
+                'width:24px;height:24px;border-radius:50%;background:#E2DDD8;color:#6B7280;'
+                'font-weight:700;font-size:0.78rem;margin-right:8px;">—</span>'
+            )
+            st.markdown(
+                f'<div style="display:flex;align-items:center;padding:10px 0 10px 4px;'
+                f'font-family:\'DM Sans\',sans-serif;font-size:0.95rem;color:#2D2D2D;">'
+                f'{badge_html}{opt}</div>',
+                unsafe_allow_html=True,
+            )
+        with col_select:
+            rank_choices = ["—"] + [str(r) for r in range(1, n + 1)]
+            current_val = str(current_order[i]) if current_order[i] is not None else "—"
+            sel = st.selectbox(
+                f"Rank for option {i+1}",
+                options=rank_choices,
+                index=rank_choices.index(current_val) if current_val in rank_choices else 0,
+                key=f"{key_prefix}_sel_{i}",
+                label_visibility="collapsed",
+            )
+            new_order[i] = int(sel) if sel != "—" else None
+
+    st.session_state[state_key] = new_order
+
+    # Validate uniqueness (no duplicate ranks)
+    assigned = [r for r in new_order if r is not None]
+    has_duplicates = len(assigned) != len(set(assigned))
+    all_assigned = len(assigned) == n
+
+    if has_duplicates:
+        st.markdown(
+            '<div class="info-warn">⚠  Some ranks are assigned more than once — '
+            'each rank must be used exactly once.</div>',
+            unsafe_allow_html=True,
+        )
+        return None  # not valid yet
+
+    if all_assigned and not has_duplicates:
+        # Build ordered list of labels by their assigned rank
+        ranked_pairs = sorted(zip(new_order, options))
+        ranked_labels = [lbl for _, lbl in ranked_pairs]
+        return ranked_labels
+
+    return None  # incomplete
+
+
+def render_likert_question(q: dict, q_num: int, answers: dict):
+    """Render a horizontal Likert scale using Streamlit radio with custom styling."""
+    st.markdown(
+        f"""
+        <div class="q-card">
+            <div class="q-number">Question {q_num} &nbsp;·&nbsp; {q["section"]}</div>
+            <div class="q-text">{q["text"]}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    opts = q["options"]
+    cur  = answers.get(q["id"])
+    idx  = opts.index(cur) if cur in opts else None
+
+    # Horizontal radio via columns
+    cols = st.columns(len(opts))
+    selected = None
+    for ci, (col, opt) in enumerate(zip(cols, opts)):
+        with col:
+            is_sel = (cur == opt)
+            btn_style = (
+                "background:#E8F0E8;border:2px solid #5A7A5A;color:#5A7A5A;font-weight:600;"
+                if is_sel else
+                "background:#fff;border:1.5px solid #E2DDD8;color:#6B7280;"
+            )
+            if st.button(
+                opt,
+                key=f"likert_{q['id']}_{ci}",
+                use_container_width=True,
+                help=None,
+            ):
+                selected = opt
+
+    # Endpoint labels
+    st.markdown(
+        f'<div class="likert-labels">'
+        f'<span>← {opts[0]}</span>'
+        f'<span>{opts[-1]} →</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    if selected:
+        return selected
+    return cur  # return previously stored value if no new click
+
+
 def render_question_card(q: dict, q_num: int, answers: dict):
+    if q["type"] == "ranking":
+        return render_ranking_question(q, q_num, answers)
+    elif q["type"] == "likert":
+        return render_likert_question(q, q_num, answers)
+
+    # Standard single / text
     st.markdown(
         f"""
         <div class="q-card">
@@ -972,7 +1355,6 @@ def render_question_card(q: dict, q_num: int, answers: dict):
 def main():
     inject_styles()
 
-    # Session state defaults
     for k, v in {"submitted": False, "answers": {},
                  "demographics": {}, "scores": None}.items():
         if k not in st.session_state:
@@ -1005,7 +1387,7 @@ def main():
             """,
             unsafe_allow_html=True,
         )
-        return   # ← Nothing else shown to the parent
+        return
 
     # ── FORM ──────────────────────────────────────────────────────────────────
     render_header()
@@ -1016,16 +1398,22 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # Demographics
     st.session_state.demographics = render_demographics(st.session_state.demographics)
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-    # Progress
+    # Progress counting
     answered_mc   = sum(1 for q in QUESTIONS
                         if q["type"] == "single" and st.session_state.answers.get(q["id"]))
     answered_text = sum(1 for q in QUESTIONS
                         if q["type"] == "text" and st.session_state.answers.get(q["id"],"").strip())
-    render_progress(answered_mc + answered_text, TOTAL_QUESTIONS)
+    answered_rank = sum(1 for q in QUESTIONS
+                        if q["type"] == "ranking" and
+                        isinstance(st.session_state.answers.get(q["id"]), list) and
+                        len(st.session_state.answers[q["id"]]) == len(q["options"]))
+    answered_likert = sum(1 for q in QUESTIONS
+                          if q["type"] == "likert" and st.session_state.answers.get(q["id"]))
+
+    render_progress(answered_mc + answered_text + answered_rank + answered_likert, TOTAL_QUESTIONS)
 
     # Questions
     cur_section = None
@@ -1046,22 +1434,31 @@ def main():
     missing_demo   = not demo.get("parent_name") or not demo.get("child_name")
     unanswered_mc  = [q for q in QUESTIONS
                       if q["type"] == "single" and not st.session_state.answers.get(q["id"])]
+    unanswered_rank = [q for q in QUESTIONS
+                       if q["type"] == "ranking" and (
+                           not isinstance(st.session_state.answers.get(q["id"]), list) or
+                           len(st.session_state.answers.get(q["id"], [])) != len(q["options"])
+                       )]
+    unanswered_likert = [q for q in QUESTIONS
+                         if q["type"] == "likert" and not st.session_state.answers.get(q["id"])]
+
+    all_unanswered = unanswered_mc + unanswered_rank + unanswered_likert
 
     if missing_demo:
         st.markdown('<div class="info-warn">⚠  Please enter the parent name and child name before submitting.</div>',
                     unsafe_allow_html=True)
-    elif unanswered_mc:
+    elif all_unanswered:
         st.markdown(
-            f'<div class="info-warn">⚠  Please answer all {len(unanswered_mc)} remaining '
+            f'<div class="info-warn">⚠  Please complete all {len(all_unanswered)} remaining '
             f'question(s) before submitting.</div>',
             unsafe_allow_html=True,
         )
 
     submitted = st.button("Submit Reflection →",
-                           disabled=(missing_demo or bool(unanswered_mc)),
+                           disabled=(missing_demo or bool(all_unanswered)),
                            key="submit_btn")
 
-    if submitted and not missing_demo and not unanswered_mc:
+    if submitted and not missing_demo and not all_unanswered:
         with st.spinner("Submitting your responses…"):
             scores      = compute_scores(st.session_state.answers)
             _, risk_lbl = classify_risk(scores)
