@@ -1,19 +1,26 @@
 """
 Nursery Pre-Enrollment Assessment System
 =========================================
-A premium Streamlit application for collecting and scoring parenting style
-assessments to help nursery staff identify alignment before enrollment.
+Premium Streamlit app for collecting and scoring parenting-style assessments.
+After submission:
+  - Parent sees a clean thank-you screen only.
+  - A structured PDF report is automatically emailed to the nursery director.
 
 Dimensions scored: Trust, Control, Anxiety, Boundary Respect
 """
 
 import streamlit as st
-import json
-import re
+import os
+import smtplib
+import tempfile
 from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PAGE CONFIG
+# PAGE CONFIG  (must be first Streamlit call)
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Nursery Pre-Enrollment Assessment",
@@ -21,6 +28,7 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed",
 )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GLOBAL STYLES
@@ -30,31 +38,24 @@ def inject_styles():
     <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
 
-    /* ── Root tokens ── */
     :root {
-        --sage:     #5A7A5A;
-        --sage-lt:  #E8F0E8;
-        --sage-mid: #C4D9C4;
-        --cream:    #FAF8F5;
-        --warm:     #F5F0E8;
-        --charcoal: #2D2D2D;
-        --muted:    #6B7280;
-        --border:   #E2DDD8;
-        --risk-low:    #3D7A4F;
-        --risk-mid:    #B07D2B;
-        --risk-high:   #9B3A3A;
-        --radius:   14px;
-        --shadow:   0 2px 16px rgba(0,0,0,0.07);
+        --sage:      #5A7A5A;
+        --sage-lt:   #E8F0E8;
+        --sage-mid:  #C4D9C4;
+        --cream:     #FAF8F5;
+        --warm:      #F5F0E8;
+        --charcoal:  #2D2D2D;
+        --muted:     #6B7280;
+        --border:    #E2DDD8;
+        --radius:    14px;
+        --shadow:    0 2px 16px rgba(0,0,0,0.07);
     }
 
-    /* ── Base resets ── */
     html, body, [class*="css"] {
         font-family: 'DM Sans', sans-serif !important;
         background-color: var(--cream) !important;
         color: var(--charcoal) !important;
     }
-
-    /* ── Hide default Streamlit chrome ── */
     #MainMenu, footer, header { visibility: hidden; }
     .block-container {
         padding-top: 2rem !important;
@@ -62,14 +63,7 @@ def inject_styles():
         max-width: 780px !important;
     }
 
-    /* ── Logo area ── */
-    .logo-wrap {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 0.5rem;
-    }
-
-    /* ── Hero header ── */
+    /* Hero */
     .hero-title {
         font-family: 'DM Serif Display', serif !important;
         font-size: 2.4rem;
@@ -88,14 +82,10 @@ def inject_styles():
         line-height: 1.6;
     }
 
-    /* ── Divider ── */
-    .divider {
-        border: none;
-        border-top: 1.5px solid var(--border);
-        margin: 1.5rem 0;
-    }
+    /* Divider */
+    .divider { border: none; border-top: 1.5px solid var(--border); margin: 1.5rem 0; }
 
-    /* ── Section label ── */
+    /* Section label */
     .section-label {
         font-size: 0.72rem;
         font-weight: 600;
@@ -105,7 +95,23 @@ def inject_styles():
         margin-bottom: 0.4rem;
     }
 
-    /* ── Question card ── */
+    /* Demographic card */
+    .demo-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.4rem 1.6rem 1.2rem;
+        margin-bottom: 1.4rem;
+        box-shadow: var(--shadow);
+    }
+    .demo-title {
+        font-family: 'DM Serif Display', serif;
+        font-size: 1.1rem;
+        color: var(--charcoal);
+        margin-bottom: 1rem;
+    }
+
+    /* Question card */
     .q-card {
         background: #fff;
         border: 1px solid var(--border);
@@ -130,7 +136,7 @@ def inject_styles():
         line-height: 1.45;
     }
 
-    /* ── Progress bar ── */
+    /* Progress */
     .progress-wrap {
         background: var(--sage-mid);
         border-radius: 99px;
@@ -151,16 +157,13 @@ def inject_styles():
         margin-bottom: 1.6rem;
     }
 
-    /* ── Radio / checkbox overrides ── */
-    .stRadio > label, .stCheckbox > label {
-        font-size: 0.96rem !important;
+    /* Inputs */
+    .stTextInput input {
+        border-radius: 10px !important;
+        border-color: var(--border) !important;
+        font-family: 'DM Sans', sans-serif !important;
+        background: #fff !important;
     }
-    .stRadio [data-testid="stMarkdownContainer"] p,
-    .stCheckbox [data-testid="stMarkdownContainer"] p {
-        font-size: 0.96rem !important;
-    }
-
-    /* ── Text area ── */
     .stTextArea textarea {
         border-radius: 10px !important;
         border-color: var(--border) !important;
@@ -168,12 +171,12 @@ def inject_styles():
         font-size: 0.95rem !important;
         background: #fff !important;
     }
-    .stTextArea textarea:focus {
+    .stTextArea textarea:focus, .stTextInput input:focus {
         border-color: var(--sage) !important;
         box-shadow: 0 0 0 2px var(--sage-mid) !important;
     }
 
-    /* ── Submit button ── */
+    /* Submit button */
     .stButton > button {
         background: var(--sage) !important;
         color: #fff !important;
@@ -185,7 +188,6 @@ def inject_styles():
         font-weight: 600 !important;
         letter-spacing: 0.02em !important;
         transition: all 0.2s !important;
-        cursor: pointer !important;
         width: 100%;
     }
     .stButton > button:hover {
@@ -194,10 +196,10 @@ def inject_styles():
         box-shadow: 0 4px 16px rgba(90,122,90,0.3) !important;
     }
 
-    /* ── Thank you screen ── */
+    /* Thank you */
     .thankyou-wrap {
         text-align: center;
-        padding: 3rem 2rem;
+        padding: 3.5rem 2rem;
         background: #fff;
         border-radius: var(--radius);
         border: 1px solid var(--border);
@@ -214,127 +216,11 @@ def inject_styles():
         color: var(--muted);
         font-size: 1rem;
         line-height: 1.65;
-        max-width: 440px;
+        max-width: 460px;
         margin: 0 auto;
     }
 
-    /* ── Admin panel ── */
-    .admin-header {
-        font-family: 'DM Serif Display', serif;
-        font-size: 1.5rem;
-        color: var(--charcoal);
-        margin-bottom: 0.25rem;
-    }
-    .admin-meta {
-        font-size: 0.85rem;
-        color: var(--muted);
-        margin-bottom: 1.5rem;
-    }
-
-    /* ── Score bar ── */
-    .score-row {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        margin-bottom: 0.85rem;
-    }
-    .score-dim {
-        font-weight: 600;
-        font-size: 0.9rem;
-        width: 140px;
-        flex-shrink: 0;
-    }
-    .score-bar-bg {
-        flex: 1;
-        background: var(--sage-lt);
-        border-radius: 99px;
-        height: 10px;
-        overflow: hidden;
-    }
-    .score-bar-fill {
-        height: 100%;
-        border-radius: 99px;
-    }
-    .score-val {
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: var(--charcoal);
-        width: 36px;
-        text-align: right;
-        flex-shrink: 0;
-    }
-
-    /* ── Risk badge ── */
-    .risk-badge {
-        display: inline-block;
-        padding: 0.4rem 1.2rem;
-        border-radius: 99px;
-        font-weight: 700;
-        font-size: 0.95rem;
-        letter-spacing: 0.03em;
-        margin-bottom: 1rem;
-    }
-    .risk-low  { background: #DCF0E3; color: var(--risk-low); }
-    .risk-mod  { background: #FFF1D6; color: var(--risk-mid); }
-    .risk-high { background: #FAE0E0; color: var(--risk-high); }
-
-    /* ── Report block ── */
-    .report-block {
-        background: var(--warm);
-        border-left: 4px solid var(--sage);
-        border-radius: 0 10px 10px 0;
-        padding: 1.2rem 1.4rem;
-        margin-top: 1rem;
-        font-size: 0.96rem;
-        line-height: 1.7;
-        color: var(--charcoal);
-    }
-
-    /* ── Dimension detail card ── */
-    .dim-card {
-        background: #fff;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 1rem 1.2rem;
-        margin-bottom: 0.75rem;
-    }
-    .dim-card-title {
-        font-weight: 600;
-        font-size: 0.92rem;
-        color: var(--charcoal);
-        margin-bottom: 0.3rem;
-    }
-    .dim-card-body {
-        font-size: 0.88rem;
-        color: var(--muted);
-        line-height: 1.6;
-    }
-
-    /* ── Export area ── */
-    .stDownloadButton > button {
-        background: transparent !important;
-        border: 2px solid var(--sage) !important;
-        color: var(--sage) !important;
-        border-radius: 10px !important;
-        font-family: 'DM Sans', sans-serif !important;
-        font-weight: 600 !important;
-        width: 100%;
-        transition: all 0.2s !important;
-    }
-    .stDownloadButton > button:hover {
-        background: var(--sage-lt) !important;
-    }
-
-    /* ── Expander ── */
-    .streamlit-expanderHeader {
-        font-weight: 600 !important;
-        font-size: 0.95rem !important;
-        color: var(--charcoal) !important;
-        background: var(--warm) !important;
-        border-radius: 10px !important;
-    }
-
-    /* ── Tooltip / info ── */
+    /* Info note */
     .info-note {
         background: var(--sage-lt);
         border-radius: 8px;
@@ -343,171 +229,142 @@ def inject_styles():
         color: var(--sage);
         margin-bottom: 1rem;
     }
+    .info-warn {
+        background: #FAE0E0;
+        border-radius: 8px;
+        padding: 0.7rem 1rem;
+        font-size: 0.85rem;
+        color: #9B3A3A;
+        margin-bottom: 1rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # QUESTION DEFINITIONS
-# Each option carries scores for [Trust, Control, Anxiety, BoundaryRespect]
-# Scale: 1 (concerning) → 5 (aligned)
+# Each MC option carries scores for [trust, control, anxiety, boundary]  1–5
 # ─────────────────────────────────────────────────────────────────────────────
 QUESTIONS = [
-    {
-        "id": "q1",
-        "type": "single",
-        "section": "Child Transition",
+    {   # Q1
+        "id": "q1", "type": "single", "section": "Child Transition",
         "text": "If your child cries daily during the first week of nursery, how would you respond?",
         "options": [
-            {
-                "label": "Request continuous updates throughout the day",
-                "scores": {"trust": 2, "control": 1, "anxiety": 1, "boundary": 2},
-            },
-            {
-                "label": "Drop in unexpectedly to check on them",
-                "scores": {"trust": 1, "control": 1, "anxiety": 1, "boundary": 1},
-            },
-            {
-                "label": "Follow a structured transition plan and stay committed",
-                "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5},
-            },
-            {
-                "label": "Consider pausing enrollment until they're ready",
-                "scores": {"trust": 3, "control": 3, "anxiety": 2, "boundary": 3},
-            },
+            {"label": "Request continuous updates throughout the day",
+             "scores": {"trust": 2, "control": 1, "anxiety": 1, "boundary": 2}},
+            {"label": "Drop in unexpectedly to check on them",
+             "scores": {"trust": 1, "control": 1, "anxiety": 1, "boundary": 1}},
+            {"label": "Follow a structured transition plan and stay committed",
+             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
+            {"label": "Consider pausing enrollment until they are ready",
+             "scores": {"trust": 3, "control": 3, "anxiety": 2, "boundary": 3}},
         ],
     },
-    {
-        "id": "q2",
-        "type": "single",
-        "section": "Role of Nursery",
+    {   # Q2
+        "id": "q2", "type": "single", "section": "Role of Nursery",
         "text": "In your view, what is the primary role of a nursery?",
         "options": [
-            {
-                "label": "Safety and emotional care above all",
-                "scores": {"trust": 4, "control": 3, "anxiety": 3, "boundary": 4},
-            },
-            {
-                "label": "Achieving measurable academic milestones",
-                "scores": {"trust": 3, "control": 2, "anxiety": 3, "boundary": 2},
-            },
-            {
-                "label": "Building independence, social skills, and emotional regulation",
-                "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5},
-            },
-            {
-                "label": "Extending and reflecting the family's parenting style",
-                "scores": {"trust": 2, "control": 1, "anxiety": 3, "boundary": 2},
-            },
+            {"label": "Safety and emotional care above all",
+             "scores": {"trust": 4, "control": 3, "anxiety": 3, "boundary": 4}},
+            {"label": "Achieving measurable academic milestones",
+             "scores": {"trust": 3, "control": 2, "anxiety": 3, "boundary": 2}},
+            {"label": "Building independence, social skills, and emotional regulation",
+             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
+            {"label": "Extending and reflecting the family's parenting style",
+             "scores": {"trust": 2, "control": 1, "anxiety": 3, "boundary": 2}},
         ],
     },
-    {
-        "id": "q3",
-        "type": "single",
-        "section": "Communication & Conflict",
+    {   # Q3
+        "id": "q3", "type": "single", "section": "Communication & Conflict",
         "text": "If you disagreed with a nursery decision, what would you most likely do?",
         "options": [
-            {
-                "label": "Expect the decision to be reconsidered immediately",
-                "scores": {"trust": 1, "control": 1, "anxiety": 3, "boundary": 1},
-            },
-            {
-                "label": "Assume the nursery will adjust without discussion",
-                "scores": {"trust": 2, "control": 1, "anxiety": 3, "boundary": 2},
-            },
-            {
-                "label": "Request a meeting to understand the reasoning",
-                "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5},
-            },
-            {
-                "label": "Escalate to management if I feel strongly",
-                "scores": {"trust": 3, "control": 2, "anxiety": 3, "boundary": 3},
-            },
+            {"label": "Expect the decision to be reconsidered immediately",
+             "scores": {"trust": 1, "control": 1, "anxiety": 3, "boundary": 1}},
+            {"label": "Assume the nursery will adjust without discussion",
+             "scores": {"trust": 2, "control": 1, "anxiety": 3, "boundary": 2}},
+            {"label": "Request a meeting to understand the reasoning",
+             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
+            {"label": "Escalate to management if I feel strongly",
+             "scores": {"trust": 3, "control": 2, "anxiety": 3, "boundary": 3}},
         ],
     },
-    {
-        "id": "q4",
-        "type": "single",
-        "section": "Update Expectations",
+    {   # Q4
+        "id": "q4", "type": "single", "section": "Update Expectations",
         "text": "How often would you expect updates from the nursery team?",
         "options": [
-            {
-                "label": "Several times throughout the day",
-                "scores": {"trust": 1, "control": 1, "anxiety": 1, "boundary": 2},
-            },
-            {
-                "label": "A daily summary at pickup",
-                "scores": {"trust": 4, "control": 4, "anxiety": 4, "boundary": 4},
-            },
-            {
-                "label": "Weekly structured progress updates",
-                "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5},
-            },
-            {
-                "label": "Only when something important happens",
-                "scores": {"trust": 4, "control": 5, "anxiety": 5, "boundary": 5},
-            },
+            {"label": "Several times throughout the day",
+             "scores": {"trust": 1, "control": 1, "anxiety": 1, "boundary": 2}},
+            {"label": "A daily summary at pickup",
+             "scores": {"trust": 4, "control": 4, "anxiety": 4, "boundary": 4}},
+            {"label": "Weekly structured progress updates",
+             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
+            {"label": "Only when something important happens",
+             "scores": {"trust": 4, "control": 5, "anxiety": 5, "boundary": 5}},
         ],
     },
-    {
-        "id": "q5",
-        "type": "single",
-        "section": "Child's Challenges",
+    {   # Q5
+        "id": "q5", "type": "single", "section": "Child's Challenges",
         "text": "When your child faces a challenge at nursery, what response do you prefer from the team?",
         "options": [
-            {
-                "label": "Inform me first and wait for my direction",
-                "scores": {"trust": 1, "control": 1, "anxiety": 2, "boundary": 1},
-            },
-            {
-                "label": "Attempt to help and update me regularly",
-                "scores": {"trust": 4, "control": 4, "anxiety": 4, "boundary": 4},
-            },
-            {
-                "label": "Apply professional judgment and report in an organized way",
-                "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5},
-            },
-            {
-                "label": "Minimize reporting to avoid adding to my stress",
-                "scores": {"trust": 2, "control": 3, "anxiety": 2, "boundary": 3},
-            },
+            {"label": "Inform me first and wait for my direction",
+             "scores": {"trust": 1, "control": 1, "anxiety": 2, "boundary": 1}},
+            {"label": "Attempt to help and update me regularly",
+             "scores": {"trust": 4, "control": 4, "anxiety": 4, "boundary": 4}},
+            {"label": "Apply professional judgment and report in an organised way",
+             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
+            {"label": "Minimise reporting to avoid adding to my stress",
+             "scores": {"trust": 2, "control": 3, "anxiety": 2, "boundary": 3}},
         ],
     },
-    {
-        "id": "q6",
-        "type": "single",
-        "section": "Independence & Growth",
+    {   # Q6
+        "id": "q6", "type": "single", "section": "Independence & Growth",
         "text": "How comfortable are you with your child experiencing temporary frustration as part of learning independence?",
         "options": [
-            {
-                "label": "Not comfortable — I prefer they're always supported",
-                "scores": {"trust": 2, "control": 1, "anxiety": 1, "boundary": 2},
-            },
-            {
-                "label": "Slightly uncomfortable — I need to be reassured",
-                "scores": {"trust": 3, "control": 2, "anxiety": 2, "boundary": 3},
-            },
-            {
-                "label": "Comfortable — I understand it's part of growth",
-                "scores": {"trust": 5, "control": 4, "anxiety": 5, "boundary": 5},
-            },
-            {
-                "label": "Very comfortable — I actively encourage resilience",
-                "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5},
-            },
+            {"label": "Not comfortable — I prefer they are always immediately supported",
+             "scores": {"trust": 2, "control": 1, "anxiety": 1, "boundary": 2}},
+            {"label": "Slightly uncomfortable — I need regular reassurance",
+             "scores": {"trust": 3, "control": 2, "anxiety": 2, "boundary": 3}},
+            {"label": "Comfortable — I understand it is part of growth",
+             "scores": {"trust": 5, "control": 4, "anxiety": 5, "boundary": 5}},
+            {"label": "Very comfortable — I actively encourage resilience",
+             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
         ],
     },
-    {
-        "id": "q7",
-        "type": "text",
-        "section": "Open Reflection",
+    {   # Q7 — NEW: Separation handling
+        "id": "q7", "type": "single", "section": "Child Readiness",
+        "text": "How does your child typically respond when separated from you in an unfamiliar setting?",
+        "options": [
+            {"label": "Becomes very distressed and takes a long time to settle",
+             "scores": {"trust": 3, "control": 2, "anxiety": 1, "boundary": 3}},
+            {"label": "Initially upset but settles within a reasonable time",
+             "scores": {"trust": 4, "control": 4, "anxiety": 4, "boundary": 4}},
+            {"label": "Explores independently with occasional check-ins",
+             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
+            {"label": "I have not had the opportunity to observe this yet",
+             "scores": {"trust": 3, "control": 3, "anxiety": 3, "boundary": 3}},
+        ],
+    },
+    {   # Q8 — NEW: Parental self-awareness at drop-off
+        "id": "q8", "type": "single", "section": "Parental Self-Awareness",
+        "text": "How would you describe your own emotional response during drop-off on difficult days?",
+        "options": [
+            {"label": "I find it very hard to leave and often linger or return to check",
+             "scores": {"trust": 1, "control": 1, "anxiety": 1, "boundary": 1}},
+            {"label": "I feel anxious but I commit to leaving and trust the team",
+             "scores": {"trust": 4, "control": 4, "anxiety": 3, "boundary": 4}},
+            {"label": "I feel confident in the environment and say goodbye calmly",
+             "scores": {"trust": 5, "control": 5, "anxiety": 5, "boundary": 5}},
+            {"label": "I have not experienced a difficult drop-off yet",
+             "scores": {"trust": 3, "control": 3, "anxiety": 4, "boundary": 3}},
+        ],
+    },
+    {   # Q9 — Short answer
+        "id": "q9", "type": "text", "section": "Open Reflection",
         "text": "What is your biggest concern about starting nursery?",
         "placeholder": "Feel free to share openly — this helps us support your child better.",
     },
-    {
-        "id": "q8",
-        "type": "text",
-        "section": "Open Reflection",
+    {   # Q10 — Short answer
+        "id": "q10", "type": "text", "section": "Open Reflection",
         "text": "How do you envision a successful partnership with the nursery team?",
         "placeholder": "There are no right or wrong answers — we value your perspective.",
     },
@@ -515,271 +372,500 @@ QUESTIONS = [
 
 TOTAL_QUESTIONS = len(QUESTIONS)
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# KEYWORD SCORING — subtle adjustments from short-answer responses
+# KEYWORD SCORING
 # ─────────────────────────────────────────────────────────────────────────────
-ANXIETY_KEYWORDS     = ["worried", "scared", "fear", "anxious", "nervous", "panic", "unsafe", "dangerous", "terrible", "hate", "dread"]
-CONTROL_KEYWORDS     = ["control", "in charge", "my decision", "i decide", "my way", "my rules", "follow my", "i know best"]
-TRUST_NEGATIVE       = ["don't trust", "not sure", "uncertain", "doubt", "skeptical", "can't be sure", "how do i know"]
-TRUST_POSITIVE       = ["trust", "confident", "comfortable", "believe", "faith", "partnership", "collaborate", "together", "open"]
-BOUNDARY_NEGATIVE    = ["anytime", "whenever i want", "drop in", "check any time", "always available", "call me immediately"]
-BOUNDARY_POSITIVE    = ["respect", "professional", "boundaries", "structure", "schedule", "organized", "routine", "plan"]
+ANXIETY_KEYWORDS  = ["worried","scared","fear","anxious","nervous","panic",
+                     "unsafe","dangerous","dread","overwhelmed","stress"]
+CONTROL_KEYWORDS  = ["control","in charge","my decision","i decide","my way",
+                     "my rules","follow my","i know best"]
+TRUST_NEGATIVE    = ["don't trust","not sure","uncertain","doubt","skeptical",
+                     "can't be sure","how do i know"]
+TRUST_POSITIVE    = ["trust","confident","comfortable","believe","faith",
+                     "partnership","collaborate","together","open","excited"]
+BOUNDARY_NEGATIVE = ["anytime","whenever i want","drop in","check any time",
+                     "always available","call me immediately","at all times"]
+BOUNDARY_POSITIVE = ["respect","professional","boundaries","structure",
+                     "schedule","organised","routine","plan","framework"]
 
 
 def keyword_adjustment(text: str) -> dict:
-    """
-    Analyse short-answer text and return score adjustments.
-    Returns a dict with deltas for each dimension (-1, 0, +1 only).
-    """
+    """Return small ±1 score deltas per dimension from open-answer keyword detection."""
     if not text:
         return {"trust": 0, "control": 0, "anxiety": 0, "boundary": 0}
-
     t = text.lower()
-    delta = {"trust": 0, "control": 0, "anxiety": 0, "boundary": 0}
-
+    d = {"trust": 0, "control": 0, "anxiety": 0, "boundary": 0}
     for kw in ANXIETY_KEYWORDS:
-        if kw in t:
-            delta["anxiety"] -= 1
-            break
+        if kw in t:  d["anxiety"]  -= 1; break
     for kw in CONTROL_KEYWORDS:
-        if kw in t:
-            delta["control"] -= 1
-            delta["boundary"] -= 1
-            break
+        if kw in t:  d["control"]  -= 1; d["boundary"] -= 1; break
     for kw in TRUST_NEGATIVE:
-        if kw in t:
-            delta["trust"] -= 1
-            break
+        if kw in t:  d["trust"]    -= 1; break
     for kw in TRUST_POSITIVE:
-        if kw in t:
-            delta["trust"] += 1
-            break
+        if kw in t:  d["trust"]    += 1; break
     for kw in BOUNDARY_NEGATIVE:
-        if kw in t:
-            delta["boundary"] -= 1
-            break
+        if kw in t:  d["boundary"] -= 1; break
     for kw in BOUNDARY_POSITIVE:
-        if kw in t:
-            delta["boundary"] += 1
-            break
-
-    return delta
+        if kw in t:  d["boundary"] += 1; break
+    return d
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SCORING ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 def compute_scores(answers: dict) -> dict:
-    """
-    Aggregate all MC scores + keyword adjustments into per-dimension totals.
-    Returns raw totals and normalised percentages (0–100).
-    """
+    """Aggregate MC + keyword scores. Returns {raw: {...}, pct: {...}}."""
     totals = {"trust": 0, "control": 0, "anxiety": 0, "boundary": 0}
-    mc_counts = {"trust": 0, "control": 0, "anxiety": 0, "boundary": 0}
-
-    # MC / radio questions (q1–q6)
     for q in QUESTIONS:
         if q["type"] == "single":
-            answer_label = answers.get(q["id"])
-            if answer_label:
+            label = answers.get(q["id"])
+            if label:
                 for opt in q["options"]:
-                    if opt["label"] == answer_label:
+                    if opt["label"] == label:
                         for dim, val in opt["scores"].items():
                             totals[dim] += val
-                            mc_counts[dim] += 1
-
-    # Keyword adjustments from q7 & q8
-    for qid in ["q7", "q8"]:
-        text = answers.get(qid, "")
-        delta = keyword_adjustment(text)
-        for dim in totals:
-            totals[dim] += delta[dim]
-
-    # Max possible per dimension = 6 questions × 5 = 30, plus up to +2 keyword bonus
-    max_possible = 32
-    percentages = {
-        dim: round(min(max(totals[dim] / max_possible * 100, 0), 100))
-        for dim in totals
-    }
-
-    return {"raw": totals, "pct": percentages}
+    for qid in ["q9", "q10"]:
+        for dim, delta in keyword_adjustment(answers.get(qid, "")).items():
+            totals[dim] += delta
+    # 8 MC × 5 = 40 max + 2 keyword bonus = 42
+    max_possible = 42
+    pct = {d: round(min(max(totals[d] / max_possible * 100, 0), 100)) for d in totals}
+    return {"raw": totals, "pct": pct}
 
 
 def classify_risk(scores: dict) -> tuple:
-    """
-    Returns (risk_level, label, badge_class) based on average alignment score.
-    """
+    """Return (level, label) based on average alignment %."""
     avg = sum(scores["pct"].values()) / len(scores["pct"])
-
     if avg >= 72:
-        return "low", "High Alignment — Low Risk", "risk-low"
+        return "low",  "High Alignment — Low Risk"
     elif avg >= 48:
-        return "mod", "Moderate Risk", "risk-mod"
+        return "mod",  "Moderate Risk — Monitor Closely"
     else:
-        return "high", "High Risk — Needs Attention", "risk-high"
+        return "high", "High Risk — Director Review Recommended"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# REPORT GENERATOR  (uses Anthropic API via st.secrets)
+# GROQ REPORT GENERATION
 # ─────────────────────────────────────────────────────────────────────────────
-def build_prompt(answers: dict, scores: dict, risk_label: str) -> str:
-    """Construct the admin report prompt."""
-    mc_summary = []
+def build_prompt(demographics: dict, answers: dict,
+                 scores: dict, risk_label: str) -> str:
+    mc_lines = []
     for q in QUESTIONS:
         if q["type"] == "single":
-            mc_summary.append(f"- {q['text']}: {answers.get(q['id'], 'No answer')}")
-
-    text_q7 = answers.get("q7", "No answer provided")
-    text_q8 = answers.get("q8", "No answer provided")
-
+            mc_lines.append(
+                f"- {q['text']}\n  Answer: {answers.get(q['id'], 'No answer')}"
+            )
     pct = scores["pct"]
+    child_age = (f"{demographics.get('child_age_years', 0)} years, "
+                 f"{demographics.get('child_age_months', 0)} months")
+    prior = "Yes — has prior nursery experience" if demographics.get("prior_nursery") \
+            else "No — first nursery experience"
 
-    return f"""You are a specialist child development consultant reviewing a nursery pre-enrollment parenting assessment.
+    return f"""You are a senior child development consultant preparing a confidential
+pre-enrollment assessment report for a nursery director.
 
-ASSESSMENT DATA:
-Dimension Scores (0–100 scale):
-- Trust in Professionals: {pct['trust']}
-- Control Orientation:     {pct['control']}  (higher = more aligned, lower = over-controlling)
-- Anxiety Level:           {pct['anxiety']}  (higher = lower anxiety / more comfortable)
-- Boundary Respect:        {pct['boundary']}
+CHILD & FAMILY PROFILE:
+- Parent Name:     {demographics.get('parent_name', 'Not provided')}
+- Child Name:      {demographics.get('child_name', 'Not provided')}
+- Child Age:       {child_age}
+- Prior Nursery:   {prior}
+- Date:            {datetime.now().strftime('%d %B %Y')}
 
-Overall Risk Classification: {risk_label}
+DIMENSION SCORES (0–100, higher = better aligned):
+- Trust in Professionals:  {pct['trust']}%
+- Control Orientation:     {pct['control']}%
+- Transition Comfort:      {pct['anxiety']}%
+- Boundary Respect:        {pct['boundary']}%
 
-Multiple-Choice Answers:
-{chr(10).join(mc_summary)}
+OVERALL RISK: {risk_label}
 
-Short-Answer Q7 (Biggest concern): {text_q7}
-Short-Answer Q8 (Vision of partnership): {text_q8}
+ASSESSMENT ANSWERS:
+{chr(10).join(mc_lines)}
 
-YOUR TASK:
-Write a professional, empathetic admin summary (250–320 words) for nursery staff.
-Structure it as:
-1. Parent Profile Overview (2–3 sentences)
-2. Strengths / Positives
-3. Potential Risk Areas or Concerns
-4. Recommended Onboarding Approach
-5. Suggested Staff Actions (2–3 bullet points)
+OPEN RESPONSES:
+- Biggest concern: {answers.get('q9', 'Not provided')}
+- Vision of partnership: {answers.get('q10', 'Not provided')}
 
-Tone: professional, non-judgmental, constructive, child-focused.
-Do NOT use jargon. Write as if advising a senior nursery director.
-Do NOT reveal numeric scores in the text — describe patterns qualitatively.
+Write a professional, empathetic, actionable report for the nursery director.
+Use EXACTLY these numbered section headings:
+
+1. EXECUTIVE SUMMARY
+2. PARENT PROFILE ANALYSIS
+3. STRENGTHS & POSITIVE INDICATORS
+4. RISK AREAS & CONCERNS
+5. CHILD READINESS OBSERVATIONS
+6. RECOMMENDED ONBOARDING APPROACH
+7. SUGGESTED STAFF ACTIONS
+
+Rules:
+- Do NOT quote numeric scores — describe patterns qualitatively.
+- Be specific to this family's actual answers, not generic.
+- Tone: professional, empathetic, child-focused, non-judgmental.
+- Length: 380–450 words total.
+- Section 7 must be bullet points starting with •
 """
 
 
-def generate_report(answers: dict, scores: dict, risk_label: str) -> str:
-    """
-    Call Groq API to generate the admin narrative report.
-    API key is loaded exclusively from st.secrets["GROQ_API_KEY"].
-    Falls back to a rule-based summary if the key is unavailable or the call fails.
-    """
+def generate_report(demographics: dict, answers: dict,
+                    scores: dict, risk_label: str) -> str:
+    """Groq API report with rule-based fallback."""
     try:
         from groq import Groq
-
-        api_key = st.secrets["GROQ_API_KEY"]
-        client = Groq(api_key=api_key)
-
-        prompt = build_prompt(answers, scores, risk_label)
-
-        chat_completion = client.chat.completions.create(
-            model="llama3-70b-8192",   # Fast, high-quality Groq model
-            max_tokens=800,
-            temperature=0.5,
+        client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+        resp = client.chat.completions.create(
+            model="llama3-70b-8192",
+            max_tokens=1000,
+            temperature=0.45,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a specialist child development consultant. "
-                        "Write professional, empathetic reports for nursery staff. "
-                        "Be concise, constructive, and non-judgmental."
-                    ),
-                },
-                {"role": "user", "content": prompt},
+                {"role": "system",
+                 "content": ("You are a specialist child development consultant. "
+                             "Write concise, professional, empathetic reports for "
+                             "nursery directors. Follow the exact structure requested.")},
+                {"role": "user", "content": build_prompt(demographics, answers, scores, risk_label)},
             ],
         )
-        return chat_completion.choices[0].message.content
-
+        return resp.choices[0].message.content
     except Exception:
-        # Graceful fallback — rule-based narrative (no API key required)
-        return generate_rule_based_report(answers, scores, risk_label)
+        return _rule_based_report(demographics, answers, scores, risk_label)
 
 
-def generate_rule_based_report(answers: dict, scores: dict, risk_label: str) -> str:
-    """
-    Fallback report generated without the API.
-    Uses score thresholds to compose a structured narrative.
-    """
-    pct = scores["pct"]
-    avg = sum(pct.values()) / len(pct)
+def _rule_based_report(demographics, answers, scores, risk_label):
+    pct  = scores["pct"]
+    avg  = sum(pct.values()) / len(pct)
+    parent = demographics.get("parent_name", "This parent")
+    child  = demographics.get("child_name",  "the child")
 
-    trust_label   = "strong" if pct["trust"] >= 70 else ("moderate" if pct["trust"] >= 45 else "limited")
-    control_label = "healthy" if pct["control"] >= 70 else ("some concern" if pct["control"] >= 45 else "high concern")
-    anxiety_label = "low" if pct["anxiety"] >= 70 else ("moderate" if pct["anxiety"] >= 45 else "elevated")
-    boundary_label = "strong" if pct["boundary"] >= 70 else ("developing" if pct["boundary"] >= 45 else "limited")
+    tl = "strong"  if pct["trust"]   >= 70 else ("moderate" if pct["trust"]   >= 45 else "limited")
+    cl = "healthy" if pct["control"] >= 70 else ("some concern" if pct["control"] >= 45 else "elevated concern")
+    al = "low"     if pct["anxiety"] >= 70 else ("moderate" if pct["anxiety"] >= 45 else "elevated")
+    bl = "strong"  if pct["boundary"]>= 70 else ("developing" if pct["boundary"]>= 45 else "limited")
 
-    report = f"""Parent Profile Overview:
-This family presents with {trust_label} trust in professional caregivers and {anxiety_label} transition-related anxiety. Their orientation toward control is categorised as {control_label}, and their respect for professional boundaries appears {boundary_label}. The overall enrollment risk is assessed as: {risk_label}.
+    pos, risks = [], []
+    if pct["trust"]   >= 65: pos.append("Willingness to defer to professional expertise.")
+    if pct["anxiety"] >= 65: pos.append("Emotional readiness for the child's transition.")
+    if pct["boundary"]>= 65: pos.append("Respect for structured communication channels.")
+    if pct["control"] >= 65: pos.append("Understands the nursery's independent professional role.")
+    if not pos: pos.append("Expresses genuine care for their child's wellbeing.")
 
-Strengths & Positives:
-"""
-    positives = []
-    if pct["trust"] >= 65:
-        positives.append("Demonstrates a willingness to defer to professional expertise.")
-    if pct["anxiety"] >= 65:
-        positives.append("Shows emotional readiness for their child's transition to nursery.")
-    if pct["boundary"] >= 65:
-        positives.append("Respects structured communication and professional boundaries.")
-    if pct["control"] >= 65:
-        positives.append("Understands the nursery's independent role in child development.")
-    if not positives:
-        positives.append("Expresses genuine concern for their child's wellbeing and comfort.")
-    report += "\n".join(f"• {p}" for p in positives)
+    if pct["trust"]   < 50: risks.append("May struggle to trust team decisions without direct involvement.")
+    if pct["anxiety"] < 50: risks.append("Elevated parental anxiety may disrupt the child's settling.")
+    if pct["control"] < 50: risks.append("Tendencies toward over-involvement may challenge boundaries.")
+    if pct["boundary"]< 50: risks.append("May not readily respect communication structures or visit policies.")
+    if not risks: risks.append("No significant concerns identified at this stage.")
 
-    report += "\n\nPotential Risk Areas:\n"
-    risks = []
-    if pct["trust"] < 50:
-        risks.append("May struggle to trust team decisions without direct involvement.")
-    if pct["anxiety"] < 50:
-        risks.append("Elevated parental anxiety could disrupt the child's settling process.")
-    if pct["control"] < 50:
-        risks.append("Tendencies toward over-involvement may challenge professional boundaries.")
-    if pct["boundary"] < 50:
-        risks.append("May not readily respect the nursery's communication structures.")
-    if not risks:
-        risks.append("No significant risk areas identified at this stage.")
-    report += "\n".join(f"• {r}" for r in risks)
+    onboard = (
+        "Standard transition plan is appropriate with daily pickup summaries in week one."
+        if avg >= 72 else
+        "An extended settling-in period is recommended with a dedicated key worker and proactive weekly check-ins."
+        if avg >= 48 else
+        "A pre-enrollment director meeting is strongly recommended before the child's first day "
+        "to align expectations on communication, boundaries, and the nursery's professional approach."
+    )
 
-    report += f"""
-
-Recommended Onboarding Approach:
-{'A standard transition plan is appropriate. Maintain regular communication through daily summaries.' if avg >= 72 else 
- 'Consider an extended settling-in period with proactive check-ins and a dedicated key worker relationship.' if avg >= 48 else 
- 'A tailored onboarding meeting with the nursery director is strongly recommended before enrollment confirmation. Discuss communication expectations, boundary-setting, and the nursery\'s professional approach explicitly.'}
-
-Suggested Staff Actions:
-• Assign an experienced key worker and schedule a pre-enrollment introductory meeting.
-• Share the nursery's communication policy clearly at induction.
-• {'Monitor settling-in progress closely and provide structured weekly feedback.' if avg < 60 else 'Follow standard settling-in procedures with a daily pickup debrief in week one.'}
-"""
-    return report.strip()
+    lines = [
+        "1. EXECUTIVE SUMMARY",
+        f"{parent} presents with an overall risk classification of {risk_label}. Their profile "
+        f"reflects {tl} trust in professionals, {al} transition anxiety, and {bl} boundary respect.",
+        "",
+        "2. PARENT PROFILE ANALYSIS",
+        f"This parent shows a {cl} control orientation and {al} comfort with {child}'s independent "
+        f"nursery experience. Communication expectations appear "
+        f"{'well calibrated' if pct['boundary'] >= 65 else 'worth clarifying at induction'}.",
+        "",
+        "3. STRENGTHS & POSITIVE INDICATORS",
+        *[f"• {p}" for p in pos],
+        "",
+        "4. RISK AREAS & CONCERNS",
+        *[f"• {r}" for r in risks],
+        "",
+        "5. CHILD READINESS OBSERVATIONS",
+        f"Based on the described separation behaviour and age data, {child} "
+        f"{'appears reasonably prepared for the transition' if avg >= 60 else 'may benefit from a gradual settling-in plan with close monitoring in the first weeks'}.",
+        "",
+        "6. RECOMMENDED ONBOARDING APPROACH",
+        onboard,
+        "",
+        "7. SUGGESTED STAFF ACTIONS",
+        "• Assign an experienced key worker and arrange a pre-enrollment introductory visit.",
+        "• Share the nursery's communication policy clearly during induction.",
+        f"• {'Provide a daily written summary during the first two weeks.' if avg < 65 else 'Offer standard daily verbal updates at pickup.'}",
+        "• Flag to the director if drop-off behaviours become disruptive after week two.",
+    ]
+    return "\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UI COMPONENTS
+# PDF GENERATION  (reportlab)
 # ─────────────────────────────────────────────────────────────────────────────
-def render_header():
-    """Logo + hero text."""
-    # Logo
-    import os
-    if os.path.exists("logo.png"):
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.image("logo.png", use_container_width=True)
-    else:
-        st.markdown(
-            '<div style="text-align:center;font-size:3rem;margin-bottom:0.25rem;">🌱</div>',
-            unsafe_allow_html=True,
+def build_pdf(demographics: dict, answers: dict,
+              scores: dict, risk_label: str, report_text: str) -> bytes:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table,
+        TableStyle, HRFlowable, KeepTogether
+    )
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from io import BytesIO
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                             leftMargin=2.2*cm, rightMargin=2.2*cm,
+                             topMargin=2.5*cm, bottomMargin=2.5*cm)
+
+    # Colours
+    SAGE       = colors.HexColor("#5A7A5A")
+    SAGE_LIGHT = colors.HexColor("#E8F0E8")
+    CHARCOAL   = colors.HexColor("#2D2D2D")
+    MUTED      = colors.HexColor("#6B7280")
+    WARM       = colors.HexColor("#FAF8F5")
+    WARM2      = colors.HexColor("#F0EDE8")
+    BORDER     = colors.HexColor("#E2DDD8")
+    RISK_PALETTE = {
+        "low":  (colors.HexColor("#DCF0E3"), colors.HexColor("#3D7A4F")),
+        "mod":  (colors.HexColor("#FFF1D6"), colors.HexColor("#B07D2B")),
+        "high": (colors.HexColor("#FAE0E0"), colors.HexColor("#9B3A3A")),
+    }
+
+    def S(name, **kw):
+        return ParagraphStyle(name, **kw)
+
+    sTitle   = S("T",  fontName="Helvetica-Bold",    fontSize=18, textColor=CHARCOAL,
+                       leading=24, alignment=TA_CENTER, spaceAfter=4)
+    sSub     = S("Su", fontName="Helvetica",          fontSize=10, textColor=MUTED,
+                       leading=14, alignment=TA_CENTER, spaceAfter=2)
+    sSection = S("Se", fontName="Helvetica-Bold",     fontSize=10, textColor=SAGE,
+                       leading=14, spaceBefore=12, spaceAfter=4)
+    sBody    = S("Bo", fontName="Helvetica",           fontSize=9.5, textColor=CHARCOAL,
+                       leading=14, spaceAfter=3)
+    sBullet  = S("Bu", fontName="Helvetica",           fontSize=9.5, textColor=CHARCOAL,
+                       leading=14, leftIndent=12, spaceAfter=2)
+    sSmall   = S("Sm", fontName="Helvetica",           fontSize=8.5, textColor=MUTED,  leading=12)
+    sFooter  = S("Fo", fontName="Helvetica-Oblique",   fontSize=7.5, textColor=MUTED,
+                       alignment=TA_CENTER)
+
+    def hr(c=SAGE, t=0.8):
+        return HRFlowable(width="100%", thickness=t, color=c, spaceAfter=5, spaceBefore=5)
+    def sp(h=0.25):
+        return Spacer(1, h*cm)
+
+    story = []
+
+    # ── Title ────────────────────────────────────────────────────────────────
+    story += [
+        Paragraph("🌱  Nursery Pre-Enrollment Assessment", sTitle),
+        Paragraph("Confidential Staff Report — For Director Use Only", sSub),
+        sp(0.3), hr(SAGE, 1.5), sp(0.2),
+    ]
+
+    # ── Demographics table ───────────────────────────────────────────────────
+    child_age_str = (f"{demographics.get('child_age_years',0)} yr  "
+                     f"{demographics.get('child_age_months',0)} mo")
+    prior_str = ("Yes — has attended nursery before"
+                 if demographics.get("prior_nursery")
+                 else "No — first nursery experience")
+    date_str = datetime.now().strftime("%d %b %Y, %H:%M")
+
+    demo_rows = [
+        [Paragraph("<b>Parent Name</b>", sSmall),
+         Paragraph(demographics.get("parent_name","—"), sBody),
+         Paragraph("<b>Date</b>",        sSmall),
+         Paragraph(date_str,             sBody)],
+        [Paragraph("<b>Child Name</b>",  sSmall),
+         Paragraph(demographics.get("child_name","—"), sBody),
+         Paragraph("<b>Child Age</b>",   sSmall),
+         Paragraph(child_age_str,        sBody)],
+        [Paragraph("<b>Prior Nursery</b>", sSmall),
+         Paragraph(prior_str, sBody), "", ""],
+    ]
+    demo_tbl = Table(demo_rows, colWidths=[3.2*cm, 6.5*cm, 2.5*cm, 4.0*cm])
+    demo_tbl.setStyle(TableStyle([
+        ("BACKGROUND",   (0,0),(0,-1), SAGE_LIGHT),
+        ("BACKGROUND",   (2,0),(2,-1), SAGE_LIGHT),
+        ("ROWBACKGROUNDS",(0,0),(-1,-1),[WARM, WARM2, WARM]),
+        ("GRID",         (0,0),(-1,-1), 0.4, BORDER),
+        ("VALIGN",       (0,0),(-1,-1), "MIDDLE"),
+        ("TOPPADDING",   (0,0),(-1,-1), 5),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 5),
+        ("LEFTPADDING",  (0,0),(-1,-1), 7),
+        ("SPAN",         (1,2),(3,2)),
+    ]))
+    story += [demo_tbl, sp(0.4)]
+
+    # ── Risk badge ───────────────────────────────────────────────────────────
+    risk_level, _ = classify_risk(scores)
+    risk_bg, risk_fg = RISK_PALETTE.get(risk_level, RISK_PALETTE["mod"])
+    risk_row = [[Paragraph(
+        f"<b>  ●  {risk_label}  </b>",
+        S("RP", fontName="Helvetica-Bold", fontSize=12,
+          textColor=risk_fg, alignment=TA_CENTER)
+    )]]
+    risk_tbl = Table(risk_row, colWidths=[16.3*cm])
+    risk_tbl.setStyle(TableStyle([
+        ("BACKGROUND",   (0,0),(-1,-1), risk_bg),
+        ("TOPPADDING",   (0,0),(-1,-1), 9),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 9),
+    ]))
+    story += [risk_tbl, sp(0.4)]
+
+    # ── Dimension score bars ─────────────────────────────────────────────────
+    story += [hr(), Paragraph("DIMENSION SCORES", sSection)]
+    dim_meta = {
+        "trust":    ("Trust in Professionals",
+                     "Willingness to accept professional decisions without constant verification."),
+        "control":  ("Control Orientation",
+                     "Degree to which the parent expects direct influence over daily nursery activities."),
+        "anxiety":  ("Transition Comfort",
+                     "Emotional readiness and comfort with the child's independent nursery experience."),
+        "boundary": ("Boundary Respect",
+                     "Respect for communication structures, visit policies, and professional limits."),
+    }
+    for dim, (label, desc) in dim_meta.items():
+        v        = scores["pct"][dim]
+        filled   = max(v / 100 * 11.5, 0.15)
+        empty    = 11.5 - filled
+        ind      = "✓" if v >= 70 else ("!" if v >= 45 else "✗")
+        ind_col  = (colors.HexColor("#3D7A4F") if v >= 70 else
+                    (colors.HexColor("#B07D2B") if v >= 45 else colors.HexColor("#9B3A3A")))
+        bar = Table(
+            [[Paragraph(f"<b>{label}</b>",
+               S("DL", fontName="Helvetica-Bold", fontSize=9, textColor=CHARCOAL)),
+              "", "",
+              Paragraph(f"<b>{v}%</b>",
+               S("DV", fontName="Helvetica-Bold", fontSize=9, textColor=CHARCOAL)),
+              Paragraph(f"<b>{ind}</b>",
+               S("DI", fontName="Helvetica-Bold", fontSize=10, textColor=ind_col))]],
+            colWidths=[4.3*cm, filled*cm, empty*cm, 1.2*cm, 0.8*cm]
+        )
+        bar.setStyle(TableStyle([
+            ("BACKGROUND",   (1,0),(1,0), SAGE),
+            ("BACKGROUND",   (2,0),(2,0), SAGE_LIGHT),
+            ("VALIGN",       (0,0),(-1,-1),"MIDDLE"),
+            ("TOPPADDING",   (0,0),(-1,-1), 4),
+            ("BOTTOMPADDING",(0,0),(-1,-1), 4),
+        ]))
+        story.append(KeepTogether([bar, Paragraph(desc, sSmall), sp(0.15)]))
+
+    # ── MC Answers ───────────────────────────────────────────────────────────
+    story += [sp(0.2), hr(), Paragraph("ASSESSMENT ANSWERS", sSection)]
+    for q in QUESTIONS:
+        if q["type"] == "single":
+            story.append(Paragraph(f"<b>Q: {q['text']}</b>", sBody))
+            story.append(Paragraph(f"→  {answers.get(q['id'], 'No answer')}", sBullet))
+            story.append(sp(0.1))
+
+    # ── Open responses ───────────────────────────────────────────────────────
+    story += [hr(), Paragraph("OPEN RESPONSES", sSection)]
+    story.append(Paragraph("<b>Biggest concern about starting nursery:</b>", sBody))
+    story.append(Paragraph(answers.get("q9","Not provided"), sBullet))
+    story += [sp(0.2)]
+    story.append(Paragraph("<b>Vision of a successful partnership:</b>", sBody))
+    story.append(Paragraph(answers.get("q10","Not provided"), sBullet))
+
+    # ── Narrative report ─────────────────────────────────────────────────────
+    story += [hr(), Paragraph("PROFESSIONAL ASSESSMENT NARRATIVE", sSection)]
+    for line in report_text.split("\n"):
+        line = line.strip()
+        if not line:
+            story.append(sp(0.12))
+        elif len(line) > 1 and line[0].isdigit() and line[1] in ".":
+            story.append(Paragraph(f"<b>{line}</b>",
+                S("NH", fontName="Helvetica-Bold", fontSize=10,
+                  textColor=SAGE, spaceBefore=8, spaceAfter=2)))
+        elif line.startswith("•"):
+            story.append(Paragraph(line, sBullet))
+        else:
+            story.append(Paragraph(line, sBody))
+
+    # ── Footer ───────────────────────────────────────────────────────────────
+    story += [sp(0.4), hr(MUTED, 0.4),
+              Paragraph(
+                  f"Auto-generated by the Nursery Pre-Enrollment Assessment System  •  "
+                  f"{datetime.now().strftime('%d %B %Y, %H:%M')}  •  Confidential — Staff Use Only",
+                  sFooter)]
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EMAIL  (Gmail SMTP via app password)
+# ─────────────────────────────────────────────────────────────────────────────
+def send_report_email(pdf_bytes: bytes, demographics: dict,
+                      risk_label: str) -> bool:
+    """Email the PDF report to the nursery director. Silent on failure."""
+    try:
+        sender   = st.secrets["EMAIL_ADDRESS"]
+        password = st.secrets["EMAIL_APP_PASSWORD"]
+        receiver = st.secrets["EMAIL_ADDRESS"]   # sends to itself
+
+        parent  = demographics.get("parent_name", "Unknown Parent")
+        child   = demographics.get("child_name",  "Unknown Child")
+        ds      = datetime.now().strftime("%d %B %Y")
+
+        msg             = MIMEMultipart()
+        msg["From"]     = sender
+        msg["To"]       = receiver
+        msg["Subject"]  = (
+            f"[Enrollment Assessment] {parent} — {child}  |  "
+            f"{risk_label}  |  {ds}"
         )
 
+        body = f"""Dear Director,
+
+A new pre-enrollment family assessment has been submitted. Please find the full PDF report attached.
+
+QUICK SUMMARY
+─────────────────────────────────────
+Parent:              {parent}
+Child:               {child}
+Child Age:           {demographics.get('child_age_years',0)} yr  {demographics.get('child_age_months',0)} mo
+Prior Nursery:       {"Yes" if demographics.get("prior_nursery") else "No"}
+Submission Date:     {ds}
+Risk Classification: {risk_label}
+─────────────────────────────────────
+
+Please review the attached PDF at your earliest convenience.
+
+This message was generated automatically by the Nursery Pre-Enrollment Assessment System.
+"""
+        msg.attach(MIMEText(body, "plain"))
+
+        filename = (
+            f"Assessment_{parent.replace(' ','_')}_"
+            f"{child.replace(' ','_')}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        )
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(pdf_bytes)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f"attachment; filename={filename}")
+        msg.attach(part)
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender, password)
+            server.sendmail(sender, receiver, msg.as_string())
+
+        return True
+    except Exception as e:
+        print(f"[EMAIL ERROR] {e}")   # log only — never shown to parent
+        return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UI HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+def render_header():
+    if os.path.exists("logo.png"):
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            st.image("logo.png", use_container_width=True)
+    else:
+        st.markdown('<div style="text-align:center;font-size:3.5rem;margin-bottom:0.2rem;">🌱</div>',
+                    unsafe_allow_html=True)
     st.markdown(
         """
         <h1 class="hero-title">Family Enrollment Reflection</h1>
@@ -794,25 +880,68 @@ def render_header():
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 
-def render_progress(current: int, total: int):
-    """Animated progress bar."""
-    pct = int((current / total) * 100)
+def render_progress(answered: int, total: int):
+    pct = int((answered / total) * 100)
     st.markdown(
         f"""
         <div class="progress-wrap">
             <div class="progress-fill" style="width:{pct}%"></div>
         </div>
-        <div class="progress-label">Question {current} of {total}</div>
+        <div class="progress-label">Question {answered} of {total} answered</div>
         """,
         unsafe_allow_html=True,
     )
 
 
+def render_demographics(demo: dict) -> dict:
+    """Render demographic fields; return updated dict."""
+    st.markdown('<div class="section-label">About Your Family</div>', unsafe_allow_html=True)
+    st.markdown('<div class="demo-card"><div class="demo-title">Please tell us a little about your family</div>',
+                unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        parent_name = st.text_input("Parent / Guardian Full Name *",
+                                    value=demo.get("parent_name",""),
+                                    placeholder="e.g. Sarah Ahmed",
+                                    key="dp_name")
+    with c2:
+        child_name  = st.text_input("Child's Full Name *",
+                                    value=demo.get("child_name",""),
+                                    placeholder="e.g. Liam",
+                                    key="dc_name")
+
+    c3, c4, c5 = st.columns([2, 2, 3])
+    with c3:
+        age_years  = st.number_input("Child's Age — Years",
+                                     min_value=0, max_value=5,
+                                     value=demo.get("child_age_years", 0),
+                                     step=1, key="da_years")
+    with c4:
+        age_months = st.selectbox("Months",
+                                  options=list(range(0, 12)),
+                                  index=demo.get("child_age_months", 0),
+                                  key="da_months")
+    with c5:
+        prior_opts  = ["No — this is their first nursery",
+                       "Yes — they have attended before"]
+        prior_idx   = 1 if demo.get("prior_nursery") else 0
+        prior_raw   = st.selectbox("Has your child attended nursery before? *",
+                                   options=prior_opts,
+                                   index=prior_idx, key="dp_prior")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    return {
+        "parent_name":      parent_name.strip(),
+        "child_name":       child_name.strip(),
+        "child_age_years":  int(age_years),
+        "child_age_months": int(age_months),
+        "prior_nursery":    prior_raw.startswith("Yes"),
+    }
+
+
 def render_question_card(q: dict, q_num: int, answers: dict):
-    """
-    Render a single question inside a styled card.
-    Returns the updated answer value.
-    """
     st.markdown(
         f"""
         <div class="q-card">
@@ -822,336 +951,128 @@ def render_question_card(q: dict, q_num: int, answers: dict):
         """,
         unsafe_allow_html=True,
     )
-
     if q["type"] == "single":
-        options = [opt["label"] for opt in q["options"]]
-        current_val = answers.get(q["id"], None)
-        idx = options.index(current_val) if current_val in options else None
-
-        # st.radio — index=None means no default selection
-        selected = st.radio(
-            label=f"_q{q['id']}_",
-            options=options,
-            index=idx,
-            key=f"radio_{q['id']}",
-            label_visibility="collapsed",
-        )
-        return selected
-
+        opts = [o["label"] for o in q["options"]]
+        cur  = answers.get(q["id"])
+        idx  = opts.index(cur) if cur in opts else None
+        return st.radio(f"_q{q['id']}_", opts, index=idx,
+                        key=f"r_{q['id']}", label_visibility="collapsed")
     elif q["type"] == "text":
-        val = st.text_area(
-            label=f"_q{q['id']}_",
-            value=answers.get(q["id"], ""),
-            placeholder=q.get("placeholder", ""),
-            key=f"text_{q['id']}",
-            label_visibility="collapsed",
-            height=110,
-        )
-        return val
-
+        return st.text_area(f"_q{q['id']}_",
+                            value=answers.get(q["id"],""),
+                            placeholder=q.get("placeholder",""),
+                            key=f"t_{q['id']}", label_visibility="collapsed",
+                            height=110)
     return None
 
 
-def render_score_bar(dim_name: str, pct: int, color: str):
-    """Render a single animated score bar."""
-    st.markdown(
-        f"""
-        <div class="score-row">
-            <div class="score-dim">{dim_name}</div>
-            <div class="score-bar-bg">
-                <div class="score-bar-fill" style="width:{pct}%; background:{color};"></div>
-            </div>
-            <div class="score-val">{pct}%</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_admin_panel(answers: dict, scores: dict):
-    """Full admin report panel (shown only after admin toggle)."""
-    risk_level, risk_label, badge_class = classify_risk(scores)
-
-    st.markdown('<div class="admin-header">🔒 Admin Assessment Report</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="admin-meta">Generated: {datetime.now().strftime("%d %b %Y, %H:%M")}</div>',
-        unsafe_allow_html=True,
-    )
-
-    # Risk badge
-    st.markdown(
-        f'<span class="risk-badge {badge_class}">{risk_label}</span>',
-        unsafe_allow_html=True,
-    )
-
-    # Dimension score bars
-    st.markdown("**Dimension Scores**")
-    dim_colors = {
-        "trust":   "#5A7A5A",
-        "control": "#7A8A5A",
-        "anxiety": "#8A7A5A",
-        "boundary":"#5A7A8A",
-    }
-    dim_labels = {
-        "trust": "Trust in Professionals",
-        "control": "Control Orientation",
-        "anxiety": "Transition Comfort",
-        "boundary": "Boundary Respect",
-    }
-    pct = scores["pct"]
-    for dim, label in dim_labels.items():
-        render_score_bar(label, pct[dim], dim_colors[dim])
-
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-    # Dimension explanations
-    st.markdown("**Dimension Insights**")
-    dim_explanations = {
-        "trust": (
-            "Trust in Professionals",
-            "Reflects the parent's willingness to accept nursery staff decisions without needing constant justification. "
-            "Low scores indicate a tendency to question professional judgment, which may require additional communication investment."
-        ),
-        "control": (
-            "Control Orientation",
-            "Measures how much the parent expects direct influence over day-to-day nursery decisions. "
-            "High alignment means the parent understands the nursery operates independently within agreed frameworks."
-        ),
-        "anxiety": (
-            "Transition Comfort",
-            "Indicates emotional readiness for the child's independent experience at nursery. "
-            "Parents with low scores may show visible anxiety during drop-offs, which can affect the child's settling."
-        ),
-        "boundary": (
-            "Boundary Respect",
-            "Assesses how well the parent is likely to respect communication structures, visit policies, and professional boundaries. "
-            "Low scores may lead to boundary-testing behaviors such as unannounced visits."
-        ),
-    }
-    for dim, (title, explanation) in dim_explanations.items():
-        score_indicator = "✅" if pct[dim] >= 70 else ("⚠️" if pct[dim] >= 45 else "🔴")
-        st.markdown(
-            f"""
-            <div class="dim-card">
-                <div class="dim-card-title">{score_indicator} {title} — {pct[dim]}%</div>
-                <div class="dim-card-body">{explanation}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-    # AI / rule-based narrative report
-    st.markdown("**Narrative Summary**")
-    with st.spinner("Generating professional assessment…"):
-        report_text = generate_report(answers, scores, risk_label)
-
-    st.markdown(
-        f'<div class="report-block">{report_text.replace(chr(10), "<br>")}</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-    # Parent's own words
-    with st.expander("📝 Parent's Open Responses"):
-        st.markdown(f"**Q7 — Biggest concern:**  \n{answers.get('q7', '—')}")
-        st.markdown(f"**Q8 — Vision of partnership:**  \n{answers.get('q8', '—')}")
-
-    # Export button
-    export_text = build_export_text(answers, scores, risk_label, report_text)
-    st.download_button(
-        label="⬇  Download Report (.txt)",
-        data=export_text,
-        file_name=f"enrollment_assessment_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-        mime="text/plain",
-    )
-
-
-def build_export_text(answers, scores, risk_label, report_text) -> str:
-    """Compose a plain-text exportable report."""
-    lines = [
-        "=" * 60,
-        "  NURSERY PRE-ENROLLMENT ASSESSMENT REPORT",
-        f"  Generated: {datetime.now().strftime('%d %B %Y, %H:%M')}",
-        "=" * 60,
-        "",
-        f"RISK CLASSIFICATION: {risk_label}",
-        "",
-        "DIMENSION SCORES",
-        "-" * 40,
-    ]
-    dim_labels = {
-        "trust": "Trust in Professionals",
-        "control": "Control Orientation",
-        "anxiety": "Transition Comfort",
-        "boundary": "Boundary Respect",
-    }
-    for dim, label in dim_labels.items():
-        lines.append(f"  {label:<28}: {scores['pct'][dim]}%")
-
-    lines += ["", "MULTIPLE-CHOICE ANSWERS", "-" * 40]
-    for q in QUESTIONS:
-        if q["type"] == "single":
-            lines.append(f"  {q['text']}")
-            lines.append(f"  → {answers.get(q['id'], 'No answer')}")
-            lines.append("")
-
-    lines += ["OPEN RESPONSES", "-" * 40]
-    lines.append(f"  Q7 — Biggest concern:\n  {answers.get('q7', '—')}")
-    lines.append("")
-    lines.append(f"  Q8 — Vision of partnership:\n  {answers.get('q8', '—')}")
-    lines += ["", "NARRATIVE REPORT", "-" * 40, report_text, "", "=" * 60]
-    return "\n".join(lines)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# MAIN APP
+# MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
     inject_styles()
 
-    # ── Session state initialisation ──────────────────────────────────────────
-    if "submitted" not in st.session_state:
-        st.session_state.submitted = False
-    if "answers" not in st.session_state:
-        st.session_state.answers = {}
-    if "scores" not in st.session_state:
-        st.session_state.scores = None
-    if "show_admin" not in st.session_state:
-        st.session_state.show_admin = False
-    if "report_text" not in st.session_state:
-        st.session_state.report_text = ""
+    # Session state defaults
+    for k, v in {"submitted": False, "answers": {},
+                 "demographics": {}, "scores": None}.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
     # ── THANK-YOU SCREEN ──────────────────────────────────────────────────────
     if st.session_state.submitted:
-        # Show logo even on thank-you
-        import os
         if os.path.exists("logo.png"):
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
+            c1, c2, c3 = st.columns([1, 2, 1])
+            with c2:
                 st.image("logo.png", use_container_width=True)
         else:
-            st.markdown('<div style="text-align:center;font-size:3rem;">🌱</div>', unsafe_allow_html=True)
+            st.markdown('<div style="text-align:center;font-size:3.5rem;">🌱</div>',
+                        unsafe_allow_html=True)
 
+        child = st.session_state.demographics.get("child_name", "your child")
         st.markdown(
-            """
+            f"""
             <div class="thankyou-wrap">
                 <div class="thankyou-icon">🌿</div>
                 <div class="thankyou-title">Thank You for Sharing</div>
                 <div class="thankyou-body">
-                    We've received your responses and our team will review them carefully.
-                    A member of our team will be in touch shortly to discuss next steps
-                    and answer any questions you may have.<br><br>
-                    We look forward to welcoming your child into our community.
+                    We have received your responses and our team will review them
+                    carefully before <b>{child}</b>'s enrollment.<br><br>
+                    A member of our team will be in touch shortly to discuss
+                    next steps and answer any questions you may have.<br><br>
+                    We look forward to welcoming your family into our community.
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        return   # ← Nothing else shown to the parent
 
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # ── Admin toggle ──────────────────────────────────────────────────────
-        with st.expander("🔒 Staff Access — View Assessment Report", expanded=False):
-            # Simple PIN protection
-            pin = st.text_input(
-                "Enter staff PIN to view report",
-                type="password",
-                key="admin_pin",
-                placeholder="••••",
-            )
-            if pin == "1234":   # Change PIN via st.secrets in production
-                st.session_state.show_admin = True
-            elif pin and pin != "1234":
-                st.warning("Incorrect PIN.")
-
-        if st.session_state.show_admin and st.session_state.scores:
-            st.markdown('<hr class="divider">', unsafe_allow_html=True)
-            render_admin_panel(st.session_state.answers, st.session_state.scores)
-
-        # Reset button (for demo / testing)
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("↩  Start a New Assessment"):
-            for key in ["submitted", "answers", "scores", "show_admin", "report_text"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
-
-        return   # Stop rendering the form
-
-    # ── ASSESSMENT FORM ───────────────────────────────────────────────────────
+    # ── FORM ──────────────────────────────────────────────────────────────────
     render_header()
 
     st.markdown(
-        '<div class="info-note">ℹ  This form takes approximately 3–5 minutes to complete. '
-        'All responses are handled with care and complete confidentiality.</div>',
+        '<div class="info-note">ℹ  This reflection takes approximately 4–6 minutes. '
+        'All responses are handled with complete confidentiality.</div>',
         unsafe_allow_html=True,
     )
 
-    # Track answered MC questions for progress
-    answered_mc = sum(
-        1 for q in QUESTIONS
-        if q["type"] == "single" and st.session_state.answers.get(q["id"])
-    )
-    answered_text = sum(
-        1 for q in QUESTIONS
-        if q["type"] == "text" and st.session_state.answers.get(q["id"], "").strip()
-    )
-    total_answered = answered_mc + answered_text
-    render_progress(min(total_answered, TOTAL_QUESTIONS), TOTAL_QUESTIONS)
+    # Demographics
+    st.session_state.demographics = render_demographics(st.session_state.demographics)
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-    # ── Render questions ──────────────────────────────────────────────────────
-    current_section = None
-    for i, q in enumerate(QUESTIONS, start=1):
-        # Section divider
-        if q["section"] != current_section:
-            current_section = q["section"]
-            st.markdown(
-                f'<div class="section-label">{current_section}</div>',
-                unsafe_allow_html=True,
-            )
+    # Progress
+    answered_mc   = sum(1 for q in QUESTIONS
+                        if q["type"] == "single" and st.session_state.answers.get(q["id"]))
+    answered_text = sum(1 for q in QUESTIONS
+                        if q["type"] == "text" and st.session_state.answers.get(q["id"],"").strip())
+    render_progress(answered_mc + answered_text, TOTAL_QUESTIONS)
 
-        answer = render_question_card(q, i, st.session_state.answers)
-        if answer is not None:
-            st.session_state.answers[q["id"]] = answer
-
+    # Questions
+    cur_section = None
+    for i, q in enumerate(QUESTIONS, 1):
+        if q["section"] != cur_section:
+            cur_section = q["section"]
+            st.markdown(f'<div class="section-label">{cur_section}</div>',
+                        unsafe_allow_html=True)
+        ans = render_question_card(q, i, st.session_state.answers)
+        if ans is not None:
+            st.session_state.answers[q["id"]] = ans
         st.markdown("<br>", unsafe_allow_html=True)
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-    # ── Validation & Submit ───────────────────────────────────────────────────
-    mc_questions = [q for q in QUESTIONS if q["type"] == "single"]
-    unanswered_mc = [
-        q for q in mc_questions
-        if not st.session_state.answers.get(q["id"])
-    ]
+    # Validation
+    demo           = st.session_state.demographics
+    missing_demo   = not demo.get("parent_name") or not demo.get("child_name")
+    unanswered_mc  = [q for q in QUESTIONS
+                      if q["type"] == "single" and not st.session_state.answers.get(q["id"])]
 
-    if unanswered_mc:
+    if missing_demo:
+        st.markdown('<div class="info-warn">⚠  Please enter the parent name and child name before submitting.</div>',
+                    unsafe_allow_html=True)
+    elif unanswered_mc:
         st.markdown(
-            f'<div class="info-note" style="color:#9B3A3A;background:#FAE0E0;">⚠  '
-            f'Please answer all {len(unanswered_mc)} remaining question(s) before submitting.</div>',
+            f'<div class="info-warn">⚠  Please answer all {len(unanswered_mc)} remaining '
+            f'question(s) before submitting.</div>',
             unsafe_allow_html=True,
         )
 
-    submit_disabled = bool(unanswered_mc)
-    submitted = st.button(
-        "Submit Reflection →",
-        disabled=submit_disabled,
-        key="submit_btn",
-    )
+    submitted = st.button("Submit Reflection →",
+                           disabled=(missing_demo or bool(unanswered_mc)),
+                           key="submit_btn")
 
-    if submitted and not submit_disabled:
-        # Score and store
-        scores = compute_scores(st.session_state.answers)
-        st.session_state.scores = scores
+    if submitted and not missing_demo and not unanswered_mc:
+        with st.spinner("Submitting your responses…"):
+            scores      = compute_scores(st.session_state.answers)
+            _, risk_lbl = classify_risk(scores)
+            report_text = generate_report(demo, st.session_state.answers, scores, risk_lbl)
+            pdf_bytes   = build_pdf(demo, st.session_state.answers, scores, risk_lbl, report_text)
+            send_report_email(pdf_bytes, demo, risk_lbl)
+
+        st.session_state.scores    = scores
         st.session_state.submitted = True
         st.rerun()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     main()
