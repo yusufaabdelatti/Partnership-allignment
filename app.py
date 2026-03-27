@@ -1356,9 +1356,35 @@ def main():
     inject_styles()
 
     for k, v in {"submitted": False, "answers": {},
-                 "demographics": {}, "scores": None}.items():
+                 "demographics": {}, "scores": None,
+                 "access_granted": False}.items():
         if k not in st.session_state:
             st.session_state[k] = v
+
+    # ── ACCESS CODE GATE ──────────────────────────────────────────────────────
+    if not st.session_state.access_granted:
+        if os.path.exists("logo.png"):
+            c1, c2, c3 = st.columns([1, 2, 1])
+            with c2: st.image("logo.png", use_container_width=True)
+        st.markdown("""
+        <h1 class="hero-title">Family Enrollment Reflection</h1>
+        <p class="hero-sub">Please enter the access code provided by the nursery team.</p>
+        """, unsafe_allow_html=True)
+        col_a, col_b, col_c = st.columns([1, 2, 1])
+        with col_b:
+            code = st.text_input("Access code", type="password",
+                                 placeholder="Enter access code",
+                                 label_visibility="collapsed")
+            if st.button("Enter", use_container_width=True):
+                valid_codes = [c.strip() for c in st.secrets.get("ACCESS_CODE", "").split(",")]
+                if code.strip() in valid_codes:
+                    st.session_state.access_granted = True
+                    st.rerun()
+                else:
+                    st.markdown("""<div class="info-warn">
+                        ⚠ Incorrect access code. Please check with the nursery team and try again.
+                    </div>""", unsafe_allow_html=True)
+        return
 
     # ── THANK-YOU SCREEN ──────────────────────────────────────────────────────
     if st.session_state.submitted:
